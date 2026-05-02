@@ -38,6 +38,14 @@ export function useEmails() {
   return useLocalStorage<Email[]>("ssos_emails", mockEmails);
 }
 
+// Persists VIP email addresses across sessions and data sources
+export function useVIPAddresses() {
+  return useLocalStorage<string[]>(
+    "ssos_vip_addresses",
+    mockEmails.filter((e) => e.isVIP).map((e) => e.from.toLowerCase())
+  );
+}
+
 export function useTrips() {
   return useLocalStorage<Trip[]>("ssos_trips", mockTrips);
 }
