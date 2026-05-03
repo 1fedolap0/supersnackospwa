@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
 import { InboxModule } from "./modules/InboxModule";
@@ -9,8 +9,10 @@ import { TasksModule } from "./modules/TasksModule";
 import { BriefsModule } from "./modules/BriefsModule";
 import { ExpertsModule } from "./modules/ExpertsModule";
 import { PWAInstall } from "./components/PWAInstall";
-import { useEmails, useTasks } from "./store/useStore";
+import { IntelligencePanel } from "./components/IntelligencePanel";
+import { useEmails, useTasks, useTrips } from "./store/useStore";
 import { Modal } from "./components/Modal";
+import { buildIntelligenceFeed } from "./lib/orchestrator";
 import type { Task, Priority, TaskStatus } from "./lib/types";
 
 function QuickAddModal({ onClose, onAddTask }: { onClose: () => void; onAddTask: (t: Task) => void }) {
@@ -67,10 +69,23 @@ function QuickAddModal({ onClose, onAddTask }: { onClose: () => void; onAddTask:
 export default function App() {
   const [activeModule, setActiveModule] = useState("inbox");
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showIntelligence, setShowIntelligence] = useState(false);
+
   const [emails] = useEmails();
-  const [, setTasks] = useTasks();
+  const [tasks, setTasks] = useTasks();
+  const [trips] = useTrips();
 
   const unreadCount = emails.filter((e) => !e.read).length;
+
+  const intelligenceItems = useMemo(
+    () => buildIntelligenceFeed(emails, tasks, trips),
+    [emails, tasks, trips]
+  );
+  const criticalCount = intelligenceItems.filter((i) => i.urgency === "critical").length;
+
+  const navigate = (module: string) => {
+    setActiveModule(module);
+  };
 
   const MODULES: Record<string, React.ReactNode> = {
     inbox: <InboxModule />,
@@ -85,7 +100,13 @@ export default function App() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar active={activeModule} onNavigate={setActiveModule} unreadCount={unreadCount} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-          <Topbar activeModule={activeModule} onQuickAdd={() => setShowQuickAdd(true)} />
+          <Topbar
+            activeModule={activeModule}
+            onQuickAdd={() => setShowQuickAdd(true)}
+            onOpenIntelligence={() => setShowIntelligence(true)}
+            intelligenceCount={intelligenceItems.length}
+            criticalCount={criticalCount}
+          />
           <main style={{ flex: 1, overflow: "hidden" }}>
             {MODULES[activeModule]}
           </main>
@@ -93,6 +114,14 @@ export default function App() {
       </div>
 
       <PWAInstall />
+
+      {showIntelligence && (
+        <IntelligencePanel
+          items={intelligenceItems}
+          onClose={() => setShowIntelligence(false)}
+          onNavigate={navigate}
+        />
+      )}
 
       {showQuickAdd && (
         <Modal title="Quick Add Task" onClose={() => setShowQuickAdd(false)}>

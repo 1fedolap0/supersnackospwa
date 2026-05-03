@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Bell } from "lucide-react";
+import { Search, Plus, Sparkles } from "lucide-react";
 
 const MODULE_TITLES: Record<string, string> = {
   inbox: "Inbox Intelligence",
@@ -14,9 +14,12 @@ const MODULE_TITLES: Record<string, string> = {
 interface TopbarProps {
   activeModule: string;
   onQuickAdd: () => void;
+  onOpenIntelligence: () => void;
+  intelligenceCount: number;
+  criticalCount: number;
 }
 
-export function Topbar({ activeModule, onQuickAdd }: TopbarProps) {
+export function Topbar({ activeModule, onQuickAdd, onOpenIntelligence, intelligenceCount, criticalCount }: TopbarProps) {
   const [search, setSearch] = useState("");
 
   return (
@@ -34,7 +37,6 @@ export function Topbar({ activeModule, onQuickAdd }: TopbarProps) {
         </p>
       </div>
 
-      {/* Spacer */}
       <div className="flex-1" />
 
       {/* Search */}
@@ -54,16 +56,29 @@ export function Topbar({ activeModule, onQuickAdd }: TopbarProps) {
         />
       </div>
 
-      {/* Notifications */}
+      {/* Intelligence button */}
       <button
-        className="relative p-2 rounded-lg transition-colors hover:bg-white/5"
-        style={{ color: "var(--text-secondary)" }}
+        onClick={onOpenIntelligence}
+        className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all hover:brightness-110"
+        style={{
+          background: criticalCount > 0 ? "rgba(220,38,38,0.15)" : "var(--navy-600)",
+          border: `1px solid ${criticalCount > 0 ? "rgba(220,38,38,0.4)" : "var(--border-light)"}`,
+          color: criticalCount > 0 ? "#ef4444" : "var(--text-secondary)",
+        }}
       >
-        <Bell size={16} />
-        <span
-          className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
-          style={{ background: "var(--orange)" }}
-        />
+        <Sparkles size={14} className={criticalCount > 0 ? "animate-pulse" : ""} />
+        <span className="hidden sm:block">AI Feed</span>
+        {intelligenceCount > 0 && (
+          <span
+            className="flex items-center justify-center text-[10px] font-bold w-5 h-5 rounded-full"
+            style={{
+              background: criticalCount > 0 ? "#dc2626" : "var(--orange)",
+              color: "white",
+            }}
+          >
+            {intelligenceCount > 9 ? "9+" : intelligenceCount}
+          </span>
+        )}
       </button>
 
       {/* Quick Add */}

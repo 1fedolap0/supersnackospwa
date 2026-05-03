@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Star, UserCheck, Archive, ChevronRight, Sparkles, Mail, RefreshCw, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Star, UserCheck, Archive, ChevronRight, Sparkles, Mail, RefreshCw, Loader2, FileText } from "lucide-react";
 import type { Email } from "../lib/types";
 import { useEmails, useVIPAddresses } from "../store/useStore";
 import { PriorityBadge, ActionBadge, VIPBadge } from "../components/Badge";
 import { Modal } from "../components/Modal";
 import { GmailAuth, type GmailAuthState } from "../components/GmailAuth";
-import { generateEmailReply, generateDelegationEmail } from "../lib/mockAI";
+import { generateDelegationEmail } from "../lib/mockAI";
 import { fetchInbox, transformGmailMessage } from "../lib/gmail";
 import { mockEmails } from "../lib/mockData";
+import { preGenerateReplies, type ReplyDraft } from "../lib/orchestrator";
 
 type InboxView = "priority" | "all";
 
@@ -29,9 +30,10 @@ interface EmailCardProps {
   onClick: () => void;
   onToggleVIP: () => void;
   onMarkRead: () => void;
+  hasDraft?: boolean;
 }
 
-function EmailCard({ email, selected, onClick, onToggleVIP, onMarkRead }: EmailCardProps) {
+function EmailCard({ email, selected, onClick, onToggleVIP, onMarkRead, hasDraft }: EmailCardProps) {
   return (
     <button
       onClick={() => { onClick(); onMarkRead(); }}
@@ -78,9 +80,15 @@ function EmailCard({ email, selected, onClick, onToggleVIP, onMarkRead }: EmailC
         <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--text-muted)" }}>
           {email.summary}
         </p>
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
           <ActionBadge action={email.action} />
           <PriorityBadge priority={email.priority} />
+          {hasDraft && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(249,115,22,0.15)", color: "var(--orange)", border: "1px solid rgba(249,115,22,0.3)" }}>
+              <FileText size={9} />
+              Draft ready
+            </span>
+          )}
           {email.tags.slice(0, 2).map((tag) => (
             <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--navy-500)", color: "var(--text-muted)" }}>
               {tag}
@@ -96,12 +104,22 @@ function EmailCard({ email, selected, onClick, onToggleVIP, onMarkRead }: EmailC
 
 interface EmailDetailProps {
   email: Email;
+  draft?: ReplyDraft;
   onClose: () => void;
-  onReply: () => void;
   onDelegate: () => void;
 }
 
-function EmailDetail({ email, onClose, onReply, onDelegate }: EmailDetailProps) {
+function EmailDetail({ email, draft, onClose, onDelegate }: EmailDetailProps) {
+  const [showDraft, setShowDraft] = useState(!!draft);
+  const copied = useRef(false);
+
+  const copyDraft = () => {
+    if (draft) {
+      navigator.clipboard?.writeText(draft.draft).catch(() => {});
+      copied.current = true;
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-5 border-b" style={{ borderColor: "var(--border)" }}>
@@ -123,6 +141,7 @@ function EmailDetail({ email, onClose, onReply, onDelegate }: EmailDetailProps) 
         </div>
       </div>
 
+      {/* AI Summary */}
       <div className="mx-6 mt-4 p-4 rounded-lg" style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.15)" }}>
         <div className="flex items-center gap-2 mb-1.5">
           <Sparkles size={12} style={{ color: "var(--orange)" }} />
@@ -131,6 +150,39 @@ function EmailDetail({ email, onClose, onReply, onDelegate }: EmailDetailProps) 
         <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{email.summary}</p>
       </div>
 
+      {/* Pre-generated draft (proactive) */}
+      {draft && (
+        <div className="mx-6 mt-3 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(249,115,22,0.2)" }}>
+          <button
+            onClick={() => setShowDraft((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-white/5"
+            style={{ background: "rgba(249,115,22,0.08)" }}
+          >
+            <div className="flex items-center gap-2">
+              <FileText size={12} style={{ color: "var(--orange)" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--orange)" }}>
+                AI Draft Ready
+              </span>
+            </div>
+            <ChevronRight size={12} className={`transition-transform ${showDraft ? "rotate-90" : ""}`} style={{ color: "var(--orange)" }} />
+          </button>
+          {showDraft && (
+            <div className="px-4 py-3" style={{ background: "var(--navy-700)" }}>
+              <pre className="text-xs leading-6 whitespace-pre-wrap font-sans mb-3" style={{ color: "var(--text-secondary)" }}>
+                {draft.draft}
+              </pre>
+              <button
+                onClick={copyDraft}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:brightness-110"
+                style={{ background: "var(--orange)", color: "white" }}
+              >
+                Copy Draft
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <pre className="text-sm leading-7 whitespace-pre-wrap font-sans" style={{ color: "var(--text-secondary)" }}>
           {email.body}
@@ -138,14 +190,6 @@ function EmailDetail({ email, onClose, onReply, onDelegate }: EmailDetailProps) 
       </div>
 
       <div className="px-6 py-4 border-t flex gap-3 flex-wrap" style={{ borderColor: "var(--border)" }}>
-        <button
-          onClick={onReply}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:brightness-110"
-          style={{ background: "var(--orange)", color: "white" }}
-        >
-          <Sparkles size={14} />
-          Generate Reply with AI
-        </button>
         <button
           onClick={onDelegate}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:bg-white/10"
@@ -175,15 +219,21 @@ export function InboxModule() {
 
   const [view, setView] = useState<InboxView>("priority");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [aiModal, setAiModal] = useState<{ type: "reply" | "delegate"; email: Email } | null>(null);
+  const [delegateModal, setDelegateModal] = useState<Email | null>(null);
   const [authState, setAuthState] = useState<GmailAuthState>({ status: "disconnected" });
   const [fetchState, setFetchState] = useState<"idle" | "loading" | "error">("idle");
   const [fetchError, setFetchError] = useState("");
   const [usingGmail, setUsingGmail] = useState(false);
+  const [drafts, setDrafts] = useState<ReplyDraft[]>([]);
 
   // Emails shown: real gmail emails when connected, else mock
   const [gmailEmails, setGmailEmails] = useState<Email[]>([]);
   const emails = usingGmail ? gmailEmails : storedEmails;
+
+  // Pre-generate reply drafts whenever email list changes
+  useEffect(() => {
+    setDrafts(preGenerateReplies(emails));
+  }, [emails]);
 
   // Derived VIP set from persisted addresses
   const vipSet = new Set(vipAddresses.map((a) => a.toLowerCase()));
@@ -207,6 +257,7 @@ export function InboxModule() {
         const msgs = await fetchInbox(state.token, 30);
         const transformed = msgs.map((m) => transformGmailMessage(m, vipSet));
         setGmailEmails(transformed);
+        setDrafts(preGenerateReplies(transformed));
         setUsingGmail(true);
         setFetchState("idle");
       } catch (err) {
@@ -229,6 +280,7 @@ export function InboxModule() {
       const msgs = await fetchInbox(authState.token, 30);
       const transformed = msgs.map((m) => transformGmailMessage(m, vipSet));
       setGmailEmails(transformed);
+      setDrafts(preGenerateReplies(transformed));
       setFetchState("idle");
     } catch (err) {
       setFetchError(err instanceof Error ? err.message : "Failed to refresh");
@@ -351,6 +403,7 @@ export function InboxModule() {
                   onClick={() => setSelectedId(email.id)}
                   onToggleVIP={() => toggleVIP(email)}
                   onMarkRead={() => markRead(email.id)}
+                  hasDraft={drafts.some((d) => d.emailId === email.id)}
                 />
               ))
             )}
@@ -373,9 +426,9 @@ export function InboxModule() {
             <div className="flex-1 overflow-y-auto">
               <EmailDetail
                 email={selected}
+                draft={drafts.find((d) => d.emailId === selected.id)}
                 onClose={() => setSelectedId(null)}
-                onReply={() => setAiModal({ type: "reply", email: selected })}
-                onDelegate={() => setAiModal({ type: "delegate", email: selected })}
+                onDelegate={() => setDelegateModal(selected)}
               />
             </div>
           </div>
@@ -389,41 +442,30 @@ export function InboxModule() {
         )}
       </div>
 
-      {/* AI Modal */}
-      {aiModal && (
-        <Modal
-          title={aiModal.type === "reply" ? "AI-Generated Reply" : "Delegation Email"}
-          onClose={() => setAiModal(null)}
-          wide
-        >
+      {/* Delegate Modal */}
+      {delegateModal && (
+        <Modal title="Delegation Email" onClose={() => setDelegateModal(null)} wide>
           <div className="space-y-4">
             <div
               className="p-4 rounded-lg text-sm leading-7 whitespace-pre-wrap font-mono"
               style={{ background: "var(--navy-600)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
             >
-              {aiModal.type === "reply"
-                ? generateEmailReply(aiModal.email)
-                : generateDelegationEmail(aiModal.email)}
+              {generateDelegationEmail(delegateModal)}
             </div>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              AI-generated draft · Review and edit before sending
-            </p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>AI-generated draft · Review and edit before sending</p>
             <div className="flex gap-3">
               <button
                 className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all hover:brightness-110"
                 style={{ background: "var(--orange)", color: "white" }}
                 onClick={() => {
-                  const text = aiModal.type === "reply"
-                    ? generateEmailReply(aiModal.email)
-                    : generateDelegationEmail(aiModal.email);
-                  navigator.clipboard?.writeText(text).catch(() => {});
-                  setAiModal(null);
+                  navigator.clipboard?.writeText(generateDelegationEmail(delegateModal)).catch(() => {});
+                  setDelegateModal(null);
                 }}
               >
                 Copy to Clipboard
               </button>
               <button
-                onClick={() => setAiModal(null)}
+                onClick={() => setDelegateModal(null)}
                 className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors"
                 style={{ color: "var(--text-muted)", border: "1px solid var(--border)" }}
               >

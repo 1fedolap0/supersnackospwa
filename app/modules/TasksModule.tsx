@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, GripVertical, Link } from "lucide-react";
+import { Plus, Trash2, GripVertical, Link, AlertTriangle, Zap } from "lucide-react";
 import type { Task, TaskStatus, Priority } from "../lib/types";
 import { useTasks } from "../store/useStore";
 import { PriorityBadge } from "../components/Badge";
 import { Modal } from "../components/Modal";
+import { getTaskUrgency } from "../lib/orchestrator";
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
   { id: "todo", label: "To Do", color: "#6b7280" },
@@ -14,13 +15,9 @@ const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
   { id: "done", label: "Done", color: "#10b981" },
 ];
 
-function formatDue(due?: string) {
+function formatDueDate(due?: string) {
   if (!due) return null;
-  const d = new Date(due);
-  const now = new Date();
-  const overdue = d < now;
-  const label = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  return { label, overdue };
+  return new Date(due).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
 interface TaskCardProps {
@@ -31,14 +28,31 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onMove, onDelete, onClick }: TaskCardProps) {
-  const due = formatDue(task.dueDate);
+  const urgency = getTaskUrgency(task);
+  const isUrgent = urgency.level !== "none";
 
   return (
     <div
-      className="p-3.5 rounded-lg border cursor-pointer transition-all hover:border-orange-500/30 hover:bg-orange-500/5 group relative"
-      style={{ background: "var(--navy-600)", borderColor: "var(--border-light)" }}
+      className="p-3.5 rounded-lg border cursor-pointer transition-all group relative"
+      style={{
+        background: urgency.level === "critical"
+          ? "rgba(220,38,38,0.06)"
+          : urgency.level === "overdue"
+          ? "rgba(249,115,22,0.05)"
+          : "var(--navy-600)",
+        borderColor: isUrgent ? `${urgency.color}40` : "var(--border-light)",
+        boxShadow: urgency.level === "critical" ? `0 0 0 1px ${urgency.color}30` : "none",
+      }}
       onClick={onClick}
     >
+      {/* Urgency strip */}
+      {isUrgent && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l-lg"
+          style={{ background: urgency.color }}
+        />
+      )}
+
       <div className="flex items-start gap-2">
         <GripVertical size={12} className="mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-muted)" }} />
         <div className="flex-1 min-w-0">
@@ -50,11 +64,20 @@ function TaskCard({ task, onMove, onDelete, onClick }: TaskCardProps) {
                 <Link size={9} /> email
               </span>
             )}
-            {due && (
-              <span className={`text-[10px] font-medium ${due.overdue ? "text-red-400" : ""}`} style={due.overdue ? {} : { color: "var(--text-muted)" }}>
-                {due.overdue ? "Overdue · " : ""}{due.label}
+            {urgency.level !== "none" ? (
+              <span
+                className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: `${urgency.color}20`, color: urgency.color, border: `1px solid ${urgency.color}40` }}
+              >
+                {urgency.level === "critical" ? <AlertTriangle size={8} /> : <Zap size={8} />}
+                {urgency.label}
+                {urgency.daysOverdue > 0 && ` · ${urgency.daysOverdue}d`}
               </span>
-            )}
+            ) : task.dueDate ? (
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                {formatDueDate(task.dueDate)}
+              </span>
+            ) : null}
           </div>
           {task.assignee && (
             <p className="text-[11px] mt-2" style={{ color: "var(--text-muted)" }}>→ {task.assignee}</p>
@@ -192,8 +215,40 @@ export function TasksModule() {
     setTasks((p) => [task, ...p]);
   };
 
+  const activeTasks = tasks.filter((t) => t.status !== "done");
+  const criticalTasks = activeTasks.filter((t) => getTaskUrgency(t).level === "critical");
+  const overdueTasks = activeTasks.filter((t) => getTaskUrgency(t).level === "overdue");
+
   return (
     <div className="flex flex-col h-full">
+      {/* Urgency bar */}
+      {(criticalTasks.length > 0 || overdueTasks.length > 0) && (
+        <div
+          className="flex items-center gap-4 px-6 py-2.5 border-b shrink-0"
+          style={{
+            background: criticalTasks.length > 0 ? "rgba(220,38,38,0.07)" : "rgba(249,115,22,0.05)",
+            borderColor: criticalTasks.length > 0 ? "rgba(220,38,38,0.25)" : "rgba(249,115,22,0.2)",
+          }}
+        >
+          {criticalTasks.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle size={12} style={{ color: "#dc2626" }} className="animate-pulse" />
+              <span className="text-xs font-bold" style={{ color: "#dc2626" }}>
+                {criticalTasks.length} critical — escalate now
+              </span>
+            </div>
+          )}
+          {overdueTasks.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Zap size={12} style={{ color: "#f97316" }} />
+              <span className="text-xs font-semibold" style={{ color: "#f97316" }}>
+                {overdueTasks.length} overdue
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-4">

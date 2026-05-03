@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Plane, Plus, Clock, MapPin, Bell, Sparkles, ChevronRight, Trash2 } from "lucide-react";
+import { Plane, Plus, Clock, MapPin, Bell, Sparkles, ChevronRight, Trash2, CheckSquare } from "lucide-react";
 import type { Trip } from "../lib/types";
-import { useTrips } from "../store/useStore";
+import { useTrips, useTasks } from "../store/useStore";
 import { Modal } from "../components/Modal";
 import { generateTripBrief } from "../lib/mockAI";
+import { generateTripTasks } from "../lib/orchestrator";
 
 function formatDate(ts: string) {
   return new Date(ts).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
@@ -202,14 +203,36 @@ function AddTripForm({ onAdd, onClose }: AddTripFormProps) {
 
 export function TripsModule() {
   const [trips, setTrips] = useTrips();
+  const [, setTasks] = useTasks();
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [tasksCreated, setTasksCreated] = useState<number | null>(null);
 
-  const addTrip = (trip: Trip) => setTrips((p) => [trip, ...p]);
+  const addTrip = (trip: Trip) => {
+    setTrips((p) => [trip, ...p]);
+    // Auto-create tasks for the trip
+    const autoTasks = generateTripTasks(trip);
+    setTasks((prev) => [...autoTasks, ...prev]);
+    setTasksCreated(autoTasks.length);
+    setTimeout(() => setTasksCreated(null), 5000);
+  };
+
   const deleteTrip = (id: string) => { setTrips((p) => p.filter((t) => t.id !== id)); setSelectedTrip(null); };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
+      {/* Auto-task toast */}
+      {tasksCreated !== null && (
+        <div
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl"
+          style={{ background: "var(--navy-600)", border: "1px solid rgba(16,185,129,0.4)" }}
+        >
+          <CheckSquare size={14} style={{ color: "#10b981" }} />
+          <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            {tasksCreated} tasks auto-created in Tasks
+          </p>
+        </div>
+      )}
       {/* List */}
       <div
         className={`flex flex-col border-r ${selectedTrip ? "hidden md:flex md:w-80 lg:w-96 shrink-0" : "flex-1"}`}
