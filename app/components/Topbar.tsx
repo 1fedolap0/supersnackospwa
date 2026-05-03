@@ -5,11 +5,9 @@ import { Search, Plus, Sparkles } from "lucide-react";
 import { ModelSelector } from "./ModelSelector";
 
 const MODULE_TITLES: Record<string, string> = {
+  warroom: "War Room",
   inbox: "Inbox Intelligence",
-  trips: "Trip Command Center",
   tasks: "Task & Follow-up Tracker",
-  briefs: "Executive Brief Generator",
-  experts: "AI Experts Panel",
 };
 
 interface TopbarProps {

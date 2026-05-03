@@ -1,13 +1,11 @@
 "use client";
 
-import { Inbox, Plane, CheckSquare, FileText, Users } from "lucide-react";
+import { Inbox, CheckSquare, Shield } from "lucide-react";
 
 const NAV = [
-  { id: "inbox", label: "Inbox", icon: Inbox },
-  { id: "trips", label: "Trips", icon: Plane },
-  { id: "tasks", label: "Tasks", icon: CheckSquare },
-  { id: "briefs", label: "Briefs", icon: FileText },
-  { id: "experts", label: "Experts", icon: Users },
+  { id: "warroom", label: "War Room", icon: Shield },
+  { id: "inbox",   label: "Inbox",    icon: Inbox },
+  { id: "tasks",   label: "Tasks",    icon: CheckSquare },
 ];
 
 interface SidebarProps {

@@ -3,11 +3,9 @@
 import { useState, useMemo } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
+import { WarRoomModule } from "./modules/WarRoomModule";
 import { InboxModule } from "./modules/InboxModule";
-import { TripsModule } from "./modules/TripsModule";
 import { TasksModule } from "./modules/TasksModule";
-import { BriefsModule } from "./modules/BriefsModule";
-import { ExpertsModule } from "./modules/ExpertsModule";
 import { PWAInstall } from "./components/PWAInstall";
 import { IntelligencePanel } from "./components/IntelligencePanel";
 import { useEmails, useTasks, useTrips } from "./store/useStore";
@@ -67,7 +65,7 @@ function QuickAddModal({ onClose, onAddTask }: { onClose: () => void; onAddTask:
 }
 
 export default function App() {
-  const [activeModule, setActiveModule] = useState("inbox");
+  const [activeModule, setActiveModule] = useState("warroom");
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showIntelligence, setShowIntelligence] = useState(false);
 
@@ -88,11 +86,9 @@ export default function App() {
   };
 
   const MODULES: Record<string, React.ReactNode> = {
+    warroom: <WarRoomModule onNavigate={setActiveModule} onQuickAdd={() => setShowQuickAdd(true)} />,
     inbox: <InboxModule />,
-    trips: <TripsModule />,
     tasks: <TasksModule />,
-    briefs: <BriefsModule />,
-    experts: <ExpertsModule />,
   };
 
   return (
