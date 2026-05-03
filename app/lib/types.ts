@@ -55,12 +55,21 @@ export interface Brief {
   risks: string[];
   nextSteps: string[];
   createdAt: string;
+  model?: string;
+  provider?: string;
+  isMock?: boolean;
+  latencyMs?: number;
 }
 
 export interface ExpertMessage {
   role: "user" | "expert";
   content: string;
   timestamp: string;
+  // Model attribution (set on expert messages)
+  model?: string;
+  provider?: string;
+  isMock?: boolean;
+  latencyMs?: number;
 }
 
 export interface ExpertConversation {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Search, Plus, Sparkles } from "lucide-react";
+import { ModelSelector } from "./ModelSelector";
 
 const MODULE_TITLES: Record<string, string> = {
   inbox: "Inbox Intelligence",
@@ -55,6 +56,9 @@ export function Topbar({ activeModule, onQuickAdd, onOpenIntelligence, intellige
           }}
         />
       </div>
+
+      {/* Model Router selector */}
+      <ModelSelector />
 
       {/* Intelligence button */}
       <button

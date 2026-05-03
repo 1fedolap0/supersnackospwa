@@ -3,8 +3,11 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Trash2 } from "lucide-react";
 import type { ExpertConversation, ExpertMessage } from "../lib/types";
-import { useExpertConversations } from "../store/useStore";
-import { expertPersonas, getExpertResponse } from "../lib/mockAI";
+import { useExpertConversations, useRouterConfig } from "../store/useStore";
+import { expertPersonas } from "../lib/mockAI";
+import { generateAIResponse } from "../lib/aiRouter";
+import type { ModelProvider, ModelId } from "../lib/aiRouter";
+import { ModelAttributionBadge } from "../components/ModelSelector";
 
 const EXPERTS = Object.entries(expertPersonas).map(([id, p]) => ({ id, ...p }));
 
@@ -41,7 +44,17 @@ function ChatBubble({ message, expertColor, expertAvatar }: ChatBubbleProps) {
         >
           {message.content}
         </div>
-        <span className="text-[10px] px-1" style={{ color: "var(--text-muted)" }}>{formatTime(message.timestamp)}</span>
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{formatTime(message.timestamp)}</span>
+          {message.model && (
+            <ModelAttributionBadge
+              provider={message.provider as ModelProvider}
+              modelId={message.model as ModelId}
+              isMock={message.isMock}
+              latencyMs={message.latencyMs}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -49,6 +62,7 @@ function ChatBubble({ message, expertColor, expertAvatar }: ChatBubbleProps) {
 
 function ExpertChat({ expertId, onClear }: { expertId: string; onClear: () => void }) {
   const [conversations, setConversations] = useExpertConversations();
+  const [routerConfig] = useRouterConfig();
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -71,26 +85,26 @@ function ExpertChat({ expertId, onClear }: { expertId: string; onClear: () => vo
 
     setConversations((prev) => {
       const existing = prev.find((c) => c.expertId === expertId);
-      if (existing) {
-        return prev.map((c) =>
-          c.expertId === expertId ? { ...c, messages: [...c.messages, userMsg] } : c
-        );
-      }
+      if (existing) return prev.map((c) => c.expertId === expertId ? { ...c, messages: [...c.messages, userMsg] } : c);
       return [...prev, { expertId, messages: [userMsg] }];
     });
 
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
+    const prompt = `You are a ${expert.role}. A Chief of Staff is asking for your advice.\n\nQuestion: ${text}\n\nRespond in the voice and perspective of a ${expert.role}. Be direct, strategic, and specific. 2-4 sentences max.`;
+
+    const response = await generateAIResponse("expert-advice", prompt, routerConfig);
 
     const reply: ExpertMessage = {
       role: "expert",
-      content: getExpertResponse(expertId, text),
+      content: response.content,
       timestamp: new Date().toISOString(),
+      model: response.model,
+      provider: response.provider,
+      isMock: response.isMock,
+      latencyMs: response.latencyMs,
     };
 
     setConversations((prev) =>
-      prev.map((c) =>
-        c.expertId === expertId ? { ...c, messages: [...c.messages, reply] } : c
-      )
+      prev.map((c) => c.expertId === expertId ? { ...c, messages: [...c.messages, reply] } : c)
     );
     setThinking(false);
   };
@@ -155,7 +169,7 @@ function ExpertChat({ expertId, onClear }: { expertId: string; onClear: () => vo
               {STARTER_PROMPTS.map((prompt) => (
                 <button
                   key={prompt}
-                  onClick={() => { setInput(prompt); }}
+                  onClick={() => setInput(prompt)}
                   className="text-left text-xs px-3 py-2.5 rounded-lg border transition-all hover:border-orange-500/30 hover:bg-orange-500/5"
                   style={{ background: "var(--navy-700)", borderColor: "var(--border-light)", color: "var(--text-secondary)" }}
                 >
@@ -210,11 +224,7 @@ function ExpertChat({ expertId, onClear }: { expertId: string; onClear: () => vo
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             className="flex-1 text-sm rounded-xl px-4 py-3 outline-none transition-all"
-            style={{
-              background: "var(--navy-600)",
-              border: "1px solid var(--border-light)",
-              color: "var(--text-primary)",
-            }}
+            style={{ background: "var(--navy-600)", border: "1px solid var(--border-light)", color: "var(--text-primary)" }}
           />
           <button
             onClick={sendMessage}
@@ -250,7 +260,7 @@ export function ExpertsModule() {
         <div className="flex-1 overflow-y-auto py-2">
           {EXPERTS.map((expert) => {
             const isActive = activeExpert === expert.id;
-            const hasMessages = conversations.find((c) => c.expertId === expert.id)?.messages.length ?? 0;
+            const msgCount = conversations.find((c) => c.expertId === expert.id)?.messages.length ?? 0;
             return (
               <button
                 key={expert.id}
@@ -261,9 +271,7 @@ export function ExpertsModule() {
                   color: isActive ? expert.color : "var(--text-secondary)",
                 }}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-0 bottom-0 w-0.5 rounded-r" style={{ background: expert.color }} />
-                )}
+                {isActive && <span className="absolute left-0 top-0 bottom-0 w-0.5 rounded-r" style={{ background: expert.color }} />}
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
                   style={{ background: `${expert.color}15`, border: `1px solid ${expert.color}30` }}
@@ -272,14 +280,16 @@ export function ExpertsModule() {
                 </div>
                 <div className="hidden md:block text-left flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{expert.name}</p>
-                  <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{expert.role.replace("Chief ", "").replace(" Officer", "")}</p>
+                  <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+                    {expert.role.replace("Chief ", "").replace(" Officer", "")}
+                  </p>
                 </div>
-                {hasMessages > 0 && (
+                {msgCount > 0 && (
                   <span
                     className="hidden md:flex text-[9px] font-bold w-4 h-4 rounded-full items-center justify-center shrink-0"
                     style={{ background: `${expert.color}30`, color: expert.color }}
                   >
-                    {hasMessages > 9 ? "9+" : hasMessages}
+                    {msgCount > 9 ? "9+" : msgCount}
                   </span>
                 )}
               </button>

@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Sparkles, FileText, Plus, Trash2, ChevronRight, AlertTriangle, CheckCircle, ArrowRight, Zap } from "lucide-react";
 import type { Brief } from "../lib/types";
-import { useBriefs } from "../store/useStore";
-import { generateBriefFromNotes } from "../lib/mockAI";
+import { useBriefs, useRouterConfig } from "../store/useStore";
+import { generateAIResponse } from "../lib/aiRouter";
+import { ModelAttributionBadge } from "../components/ModelSelector";
+import type { ModelProvider, ModelId } from "../lib/aiRouter";
 import { Modal } from "../components/Modal";
 
 function formatDate(ts: string) {
@@ -82,9 +84,19 @@ function BriefDetail({ brief }: { brief: Brief }) {
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.2)" }}>
           <FileText size={18} style={{ color: "var(--orange)" }} />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h2 className="text-base font-bold" style={{ color: "var(--text-primary)" }}>{brief.title}</h2>
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>{formatDate(brief.createdAt)}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>{formatDate(brief.createdAt)}</p>
+            {brief.model && brief.provider && (
+              <ModelAttributionBadge
+                provider={brief.provider as ModelProvider}
+                modelId={brief.model as ModelId}
+                isMock={brief.isMock}
+                latencyMs={brief.latencyMs}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -110,19 +122,69 @@ function BriefDetail({ brief }: { brief: Brief }) {
   );
 }
 
+function parseBriefResponse(text: string): Pick<Brief, "title" | "keyUpdates" | "decisionsRequired" | "risks" | "nextSteps"> {
+  const extract = (header: string): string[] => {
+    const re = new RegExp(`##\\s*${header}[\\s\\S]*?(?=\\n##|$)`, "i");
+    const block = text.match(re)?.[0] ?? "";
+    return block
+      .split("\n")
+      .slice(1)
+      .map((l) => l.replace(/^[-•*\d.]+\s*/, "").trim())
+      .filter(Boolean);
+  };
+  return {
+    title: "Executive Brief",
+    keyUpdates: extract("Key Updates"),
+    decisionsRequired: extract("Decisions Required"),
+    risks: extract("Risks"),
+    nextSteps: extract("Next Steps"),
+  };
+}
+
 function GeneratorForm({ onGenerate, onClose }: { onGenerate: (brief: Brief) => void; onClose: () => void }) {
   const [notes, setNotes] = useState("");
   const [title, setTitle] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [routerConfig] = useRouterConfig();
 
-  const generate = () => {
-    const generated = generateBriefFromNotes(notes);
+  const generate = async () => {
+    if (!notes.trim()) return;
+    setGenerating(true);
+    const prompt = `You are an executive chief of staff. Structure the following raw notes into a concise executive brief.
+
+Raw input:
+${notes}
+
+Respond ONLY in this exact format:
+## Key Updates
+• [bullet]
+• [bullet]
+
+## Decisions Required
+• [bullet]
+• [bullet]
+
+## Risks
+• [bullet]
+
+## Next Steps
+• [bullet]
+• [bullet]`;
+
+    const response = await generateAIResponse("brief-generation", prompt, routerConfig);
+    const parsed = parseBriefResponse(response.content);
     const brief: Brief = {
       id: Date.now().toString(),
       rawInput: notes,
       createdAt: new Date().toISOString(),
-      ...generated,
-      title: title || generated.title,
+      ...parsed,
+      title: title || parsed.title,
+      model: response.model,
+      provider: response.provider,
+      isMock: response.isMock,
+      latencyMs: response.latencyMs,
     };
+    setGenerating(false);
     onGenerate(brief);
     onClose();
   };
@@ -157,16 +219,17 @@ function GeneratorForm({ onGenerate, onClose }: { onGenerate: (brief: Brief) => 
       <div className="flex gap-3 pt-2">
         <button
           onClick={generate}
-          disabled={!notes.trim()}
+          disabled={!notes.trim() || generating}
           className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           style={{ background: "var(--orange)", color: "white" }}
         >
-          <Sparkles size={14} />
-          Generate Executive Brief
+          <Sparkles size={14} className={generating ? "animate-spin" : ""} />
+          {generating ? "Generating…" : "Generate Executive Brief"}
         </button>
         <button
           onClick={onClose}
-          className="px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors"
+          disabled={generating}
+          className="px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors disabled:opacity-40"
           style={{ color: "var(--text-muted)", border: "1px solid var(--border)" }}
         >
           Cancel
